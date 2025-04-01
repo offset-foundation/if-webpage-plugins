@@ -1,5 +1,5 @@
 {
-  "name": "@tngtech/if-webpage-plugins",
+  "name": "@offset-foundation/if-webpage-plugins",
   "description": "Impact Framework - Plugins for estimating CO2e Impact of Webpages",
   "version": "1.0.1",
   "author": {
@@ -7,7 +7,7 @@
     "email": "alexander.zur.bonsen@tngtech.com"
   },
   "bugs": {
-    "url": "https://github.com/TNG/if-webpage-plugins/issues"
+    "url": "https://github.com/offset-foundation/if-webpage-plugins/issues"
   },
   "dependencies": {
     "@grnsft/if-core": "^0.0.28",
@@ -47,7 +47,7 @@
   "files": [
     "build"
   ],
-  "homepage": "https://github.com/TNG/if-webpage-plugins",
+  "homepage": "https://github.com/offset-foundation/if-webpage-plugins",
   "keywords": [
     "green software",
     "green software foundation",
@@ -62,7 +62,7 @@
     "access": "public"
   },
   "repository": {
-    "url": "git+https://github.com/TNG/if-webpage-plugins.git"
+    "url": "git+https://github.com/offset-foundation/if-webpage-plugins.git"
   },
   "scripts": {
     "build": "rm -rf build && tsc --project tsconfig.json",
