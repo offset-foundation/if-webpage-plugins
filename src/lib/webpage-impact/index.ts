@@ -196,6 +196,16 @@ export const WebpageImpactUtils = () => {
     }
   };
 
+  const createDisposableCDPSession = async (page: Page) => {
+    const cdpSession = await page.createCDPSession();
+    return {
+      cdpSession,
+      [Symbol.asyncDispose]: async () => {
+        await cdpSession.detach();
+      },
+    };
+  };
+
   const loadPageResources = async (
     page: Page,
     url: string,
@@ -208,7 +218,8 @@ export const WebpageImpactUtils = () => {
     // https://chromedevtools.github.io/devtools-protocol/tot/Network/
     const cdpResponses: Record<string, ResourceBase> = {};
     const cdpTransferSizes: Record<string, {transferSize: number}> = {};
-    const cdpSession = await page.createCDPSession();
+    await using disposableCDPSession = await createDisposableCDPSession(page);
+    const {cdpSession} = disposableCDPSession;
     await cdpSession.send('Network.enable');
     cdpSession.on('Network.responseReceived', event => {
       cdpResponses[event.requestId] = {
@@ -258,8 +269,6 @@ export const WebpageImpactUtils = () => {
       await page.evaluate(scrollToBottomOfPage);
       // await page.screenshot({path: './BOTTOM.png'});
     }
-
-    await cdpSession.detach();
 
     return mergeCdpData(cdpResponses, cdpTransferSizes);
   };
