@@ -72,7 +72,7 @@
     "lint": "gts lint",
     "pre-commit": "lint-staged",
     "prepare": "husky install",
-    "prepublish": "npm run build",
+    "prepublishOnly": "npm run build",
     "test": "jest --verbose"
   }
 }
