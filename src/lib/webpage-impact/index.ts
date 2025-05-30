@@ -190,6 +190,7 @@ export const WebpageImpactUtils = () => {
 
         return {
           ...computeMetrics(initialResources, reloadedResources),
+          finalUrl: page.url(),
         };
       } finally {
         await browser.close();
