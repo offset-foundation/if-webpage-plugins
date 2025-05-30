@@ -7,6 +7,7 @@ import puppeteer, {
   Page,
   PredefinedNetworkConditions,
   Protocol,
+  TimeoutError,
 } from 'puppeteer';
 import {z} from 'zod';
 
@@ -172,24 +173,28 @@ export const WebpageImpactUtils = () => {
       await page.setRequestInterception(true);
       page.on('request', requestHandler);
 
-      const initialResources = await loadPageResources(page, url, {
-        reload: false,
-        cacheEnabled: false,
-        scrollToBottom: config?.scrollToBottom,
-      });
+      const {pageResources: initialResources, timeoutTriggered} =
+        await loadPageResources(page, url, {
+          reload: false,
+          cacheEnabled: false,
+          scrollToBottom: config?.scrollToBottom,
+        });
 
       let reloadedResources: Resource[] | undefined;
       if (config?.computeReloadRatio) {
-        reloadedResources = await loadPageResources(page, url, {
-          reload: true,
-          cacheEnabled: true,
-          scrollToBottom: config?.scrollToBottom,
-        });
+        reloadedResources = (
+          await loadPageResources(page, url, {
+            reload: true,
+            cacheEnabled: true,
+            scrollToBottom: config?.scrollToBottom,
+          })
+        ).pageResources;
       }
 
       return {
         ...computeMetrics(initialResources, reloadedResources),
         finalUrl: page.url(),
+        timeoutTriggered,
       };
     } finally {
       await browser.close();
@@ -210,7 +215,7 @@ export const WebpageImpactUtils = () => {
     page: Page,
     url: string,
     {reload, cacheEnabled, scrollToBottom}: WebpageImpactOptions,
-  ): Promise<Resource[]> => {
+  ): Promise<{pageResources: Resource[]; timeoutTriggered: boolean}> => {
     await page.setCacheEnabled(cacheEnabled);
 
     // The transfer size of a resource is not available from puppeteer's reponse object.
@@ -258,10 +263,19 @@ export const WebpageImpactUtils = () => {
     // (There is also fromServiceWorker, but I don't think that allows a conclusion about caching,
     // depends on what the service worker does.)
 
-    if (!reload) {
-      await page.goto(url, {waitUntil: 'networkidle0'});
-    } else {
-      await page.reload({waitUntil: 'networkidle0'});
+    let timeoutTriggered = false;
+    try {
+      if (!reload) {
+        await page.goto(url, {waitUntil: 'networkidle0'});
+      } else {
+        await page.reload({waitUntil: 'networkidle0'});
+      }
+    } catch (err) {
+      if (err instanceof TimeoutError) {
+        timeoutTriggered = true;
+      } else {
+        throw err;
+      }
     }
 
     if (scrollToBottom) {
@@ -270,7 +284,10 @@ export const WebpageImpactUtils = () => {
       // await page.screenshot({path: './BOTTOM.png'});
     }
 
-    return mergeCdpData(cdpResponses, cdpTransferSizes);
+    return {
+      pageResources: mergeCdpData(cdpResponses, cdpTransferSizes),
+      timeoutTriggered,
+    };
   };
 
   const mergeCdpData = (
