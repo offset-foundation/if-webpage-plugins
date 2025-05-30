@@ -148,57 +148,51 @@ export const WebpageImpactUtils = () => {
       await interceptedRequest.continue({headers});
     };
 
+    const browser = await puppeteer.launch();
+
     try {
-      const browser = await puppeteer.launch();
+      const page = await browser.newPage();
+      if (config?.timeout && config?.timeout >= 0) {
+        page.setDefaultNavigationTimeout(config.timeout);
+      }
+      if (config?.mobileDevice) {
+        await page.emulate(KnownDevices[config.mobileDevice as Device]);
+      }
+      if (config?.emulateNetworkConditions) {
+        await page.emulateNetworkConditions(
+          PredefinedNetworkConditions[
+            config.emulateNetworkConditions as keyof typeof PredefinedNetworkConditions
+          ],
+        );
+      } else {
+        // set viewport to a reasonable size for laptops. I hope that is a sensible default.
+        await page.setViewport({width: 1440, height: 900});
+      }
 
-      try {
-        const page = await browser.newPage();
-        if (config?.timeout && config?.timeout >= 0) {
-          page.setDefaultNavigationTimeout(config.timeout);
-        }
-        if (config?.mobileDevice) {
-          await page.emulate(KnownDevices[config.mobileDevice as Device]);
-        }
-        if (config?.emulateNetworkConditions) {
-          await page.emulateNetworkConditions(
-            PredefinedNetworkConditions[
-              config.emulateNetworkConditions as keyof typeof PredefinedNetworkConditions
-            ],
-          );
-        } else {
-          // set viewport to a reasonable size for laptops. I hope that is a sensible default.
-          await page.setViewport({width: 1440, height: 900});
-        }
+      await page.setRequestInterception(true);
+      page.on('request', requestHandler);
 
-        await page.setRequestInterception(true);
-        page.on('request', requestHandler);
+      const initialResources = await loadPageResources(page, url, {
+        reload: false,
+        cacheEnabled: false,
+        scrollToBottom: config?.scrollToBottom,
+      });
 
-        const initialResources = await loadPageResources(page, url, {
-          reload: false,
-          cacheEnabled: false,
+      let reloadedResources: Resource[] | undefined;
+      if (config?.computeReloadRatio) {
+        reloadedResources = await loadPageResources(page, url, {
+          reload: true,
+          cacheEnabled: true,
           scrollToBottom: config?.scrollToBottom,
         });
-
-        let reloadedResources: Resource[] | undefined;
-        if (config?.computeReloadRatio) {
-          reloadedResources = await loadPageResources(page, url, {
-            reload: true,
-            cacheEnabled: true,
-            scrollToBottom: config?.scrollToBottom,
-          });
-        }
-
-        return {
-          ...computeMetrics(initialResources, reloadedResources),
-          finalUrl: page.url(),
-        };
-      } finally {
-        await browser.close();
       }
-    } catch (error) {
-      throw new Error(
-        `${LOGGER_PREFIX}: Error during measurement of webpage impact metrics: ${error}`,
-      );
+
+      return {
+        ...computeMetrics(initialResources, reloadedResources),
+        finalUrl: page.url(),
+      };
+    } finally {
+      await browser.close();
     }
   };
 
@@ -207,73 +201,67 @@ export const WebpageImpactUtils = () => {
     url: string,
     {reload, cacheEnabled, scrollToBottom}: WebpageImpactOptions,
   ): Promise<Resource[]> => {
-    try {
-      await page.setCacheEnabled(cacheEnabled);
+    await page.setCacheEnabled(cacheEnabled);
 
-      // The transfer size of a resource is not available from puppeteer's reponse object.
-      // Need to take the detour via a Chrome devtools protcol session to get it.
-      // https://chromedevtools.github.io/devtools-protocol/tot/Network/
-      const cdpResponses: Record<string, ResourceBase> = {};
-      const cdpTransferSizes: Record<string, {transferSize: number}> = {};
-      const cdpSession = await page.createCDPSession();
-      await cdpSession.send('Network.enable');
-      cdpSession.on('Network.responseReceived', event => {
-        cdpResponses[event.requestId] = {
-          url: event.response.url,
-          status: event.response.status,
-          type: event.type,
-        };
-      });
-      // Transfer size
-      // 1) Response served from web
-      // Network.responseReceived event only contains the number of bytes received for
-      // the request so far / when the initial response is received.
-      // The final number can is sent with Network.loadingFinished.
-      //
-      // 2) Response served from cache
-      // If the resource is served from cache, Network.responseReceived contains the
-      // size of the cached response, while Network.loadingFinished reports size of 0.
-      cdpSession.on('Network.loadingFinished', event => {
-        cdpTransferSizes[event.requestId] = {
-          transferSize: event.encodedDataLength,
-        };
-      });
+    // The transfer size of a resource is not available from puppeteer's reponse object.
+    // Need to take the detour via a Chrome devtools protcol session to get it.
+    // https://chromedevtools.github.io/devtools-protocol/tot/Network/
+    const cdpResponses: Record<string, ResourceBase> = {};
+    const cdpTransferSizes: Record<string, {transferSize: number}> = {};
+    const cdpSession = await page.createCDPSession();
+    await cdpSession.send('Network.enable');
+    cdpSession.on('Network.responseReceived', event => {
+      cdpResponses[event.requestId] = {
+        url: event.response.url,
+        status: event.response.status,
+        type: event.type,
+      };
+    });
+    // Transfer size
+    // 1) Response served from web
+    // Network.responseReceived event only contains the number of bytes received for
+    // the request so far / when the initial response is received.
+    // The final number can is sent with Network.loadingFinished.
+    //
+    // 2) Response served from cache
+    // If the resource is served from cache, Network.responseReceived contains the
+    // size of the cached response, while Network.loadingFinished reports size of 0.
+    cdpSession.on('Network.loadingFinished', event => {
+      cdpTransferSizes[event.requestId] = {
+        transferSize: event.encodedDataLength,
+      };
+    });
 
-      // TODO: Currently, the amount of cached resources is determined by
-      // relying on `encodedDataLength` of the `Network.loadingFinished` event.
-      // It is 0 if the response was served from cache, which corresponds to
-      // `Network.requestServedFromCache` being true.
-      // Potentially this can be improved to excluded prefetched responses.
-      //
-      // Furter Notes:
-      // I haven't found good documentation about this event yet, but I assume it also includes prefetch cache
-      // which I would want to exclude ideally, because it does not reuse data.
-      // Network.responseReceived event contains two values,
-      // fromDiskCache and fromPrefetchCache, that allow to derive
-      // if an item was served from cache. But that misses memory cache.
-      // (There is also fromServiceWorker, but I don't think that allows a conclusion about caching,
-      // depends on what the service worker does.)
+    // TODO: Currently, the amount of cached resources is determined by
+    // relying on `encodedDataLength` of the `Network.loadingFinished` event.
+    // It is 0 if the response was served from cache, which corresponds to
+    // `Network.requestServedFromCache` being true.
+    // Potentially this can be improved to excluded prefetched responses.
+    //
+    // Furter Notes:
+    // I haven't found good documentation about this event yet, but I assume it also includes prefetch cache
+    // which I would want to exclude ideally, because it does not reuse data.
+    // Network.responseReceived event contains two values,
+    // fromDiskCache and fromPrefetchCache, that allow to derive
+    // if an item was served from cache. But that misses memory cache.
+    // (There is also fromServiceWorker, but I don't think that allows a conclusion about caching,
+    // depends on what the service worker does.)
 
-      if (!reload) {
-        await page.goto(url, {waitUntil: 'networkidle0'});
-      } else {
-        await page.reload({waitUntil: 'networkidle0'});
-      }
-
-      if (scrollToBottom) {
-        // await page.screenshot({path: './TOP.png'});
-        await page.evaluate(scrollToBottomOfPage);
-        // await page.screenshot({path: './BOTTOM.png'});
-      }
-
-      await cdpSession.detach();
-
-      return mergeCdpData(cdpResponses, cdpTransferSizes);
-    } catch (error) {
-      throw new Error(
-        `${LOGGER_PREFIX}: Error while loading webpage: ${error}`,
-      );
+    if (!reload) {
+      await page.goto(url, {waitUntil: 'networkidle0'});
+    } else {
+      await page.reload({waitUntil: 'networkidle0'});
     }
+
+    if (scrollToBottom) {
+      // await page.screenshot({path: './TOP.png'});
+      await page.evaluate(scrollToBottomOfPage);
+      // await page.screenshot({path: './BOTTOM.png'});
+    }
+
+    await cdpSession.detach();
+
+    return mergeCdpData(cdpResponses, cdpTransferSizes);
   };
 
   const mergeCdpData = (
