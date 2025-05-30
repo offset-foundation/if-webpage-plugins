@@ -127,7 +127,7 @@ export const WebpageImpact = PluginFactory({
   },
 });
 
-const WebpageImpactUtils = () => {
+export const WebpageImpactUtils = () => {
   const measurePageImpactMetrics = async (
     url: string,
     config?: ConfigParams,
@@ -357,6 +357,8 @@ const WebpageImpactUtils = () => {
       pageWeight: initialPageWeight,
       resourceTypeWeights,
       dataReloadRatio,
+      initialResources,
+      reloadResources,
     };
   };
 
