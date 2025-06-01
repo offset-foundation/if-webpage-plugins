@@ -31,6 +31,7 @@ type ResourceBase = {
   url: string;
   status: number;
   type: Protocol.Network.ResourceType;
+  contentLengthHeader?: number;
 };
 
 type Resource = ResourceBase & {transferSize: number};
@@ -227,10 +228,12 @@ export const WebpageImpactUtils = () => {
     const {cdpSession} = disposableCDPSession;
     await cdpSession.send('Network.enable');
     cdpSession.on('Network.responseReceived', event => {
+      const contentLength = parseInt(event.response.headers['Content-Length']);
       cdpResponses[event.requestId] = {
         url: event.response.url,
         status: event.response.status,
         type: event.type,
+        contentLengthHeader: !isNaN(contentLength) ? contentLength : undefined,
       };
     });
     // Transfer size
@@ -292,15 +295,22 @@ export const WebpageImpactUtils = () => {
 
   const mergeCdpData = (
     cdpResponses: Record<string, ResourceBase>,
-    cdpTransferSizes: Record<string, {transferSize: number}>,
+    cdpTransferSizes: Record<string, {transferSize: number} | undefined>,
   ): Resource[] => {
     const pageResources: Resource[] = [];
     for (const [requestId, response] of Object.entries(cdpResponses)) {
-      const transferSize = cdpTransferSizes[requestId]?.transferSize;
+      let transferSize = cdpTransferSizes[requestId]?.transferSize;
       if (transferSize === undefined) {
-        console.debug(
-          `${LOGGER_PREFIX}: No transfer size found for resource ${response.url}, status: ${response.status}`,
-        );
+        if (response.contentLengthHeader) {
+          console.debug(
+            `${LOGGER_PREFIX}: No transfer size found. Falling back to content length header ${response.url}, status: ${response.status}`,
+          );
+          transferSize = response.contentLengthHeader;
+        } else {
+          console.debug(
+            `${LOGGER_PREFIX}: No transfer size found for resource ${response.url}, status: ${response.status}`,
+          );
+        }
       }
       pageResources.push({
         ...response,
