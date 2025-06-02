@@ -198,6 +198,12 @@ export const WebpageImpactUtils = () => {
       return {
         ...computeMetrics(initialResources, reloadedResources),
         finalUrl: page.url(),
+        screenshot: config?.screenshot
+          ? await page.screenshot({
+              type: 'webp',
+              encoding: 'binary',
+            })
+          : null,
         timeoutTriggered,
       };
     } finally {
@@ -406,6 +412,7 @@ export const WebpageImpactUtils = () => {
       mobileDevice: z.string().optional(),
       emulateNetworkConditions: z.string().optional(),
       scrollToBottom: z.boolean().optional(),
+      screenshot: z.boolean().optional(),
       headers: z
         .object({
           accept: z.string().optional(),
