@@ -157,6 +157,9 @@ export const WebpageImpactUtils = () => {
 
     try {
       const page = await browser.newPage();
+      if (config?.userAgent) {
+        await page.setUserAgent(config.userAgent);
+      }
       if (config?.timeout && config?.timeout >= 0) {
         page.setDefaultNavigationTimeout(config.timeout);
       }
@@ -413,6 +416,7 @@ export const WebpageImpactUtils = () => {
       emulateNetworkConditions: z.string().optional(),
       scrollToBottom: z.boolean().optional(),
       screenshot: z.boolean().optional(),
+      userAgent: z.string().optional(),
       headers: z
         .object({
           accept: z.string().optional(),
