@@ -92,7 +92,10 @@ export const WebpageImpact = PluginFactory({
 
     return validateConfig(config);
   },
-  implementation: async (inputs: PluginParams[], config: ConfigParams) => {
+  implementation: async (
+    inputs: PluginParams[],
+    config: ReturnType<ReturnType<typeof WebpageImpactUtils>['validateConfig']>,
+  ) => {
     const {measurePageImpactMetrics} = WebpageImpactUtils();
 
     if (inputs.length === 0) {
@@ -132,7 +135,7 @@ export const WebpageImpact = PluginFactory({
 export const WebpageImpactUtils = () => {
   const measurePageImpactMetrics = async (
     url: string,
-    config?: ConfigParams,
+    config?: ReturnType<typeof validateConfig>,
   ) => {
     const requestHandler = async (interceptedRequest: HTTPRequest) => {
       const headers = Object.assign({}, interceptedRequest.headers(), {
