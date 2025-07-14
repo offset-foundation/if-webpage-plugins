@@ -135,7 +135,7 @@ export const WebpageImpact = PluginFactory({
 export const WebpageImpactUtils = () => {
   const measurePageImpactMetrics = async (
     url: string,
-    config?: ReturnType<typeof validateConfig>,
+    config: ReturnType<typeof validateConfig>,
   ) => {
     const requestHandler = async (interceptedRequest: HTTPRequest) => {
       const headers = Object.assign({}, interceptedRequest.headers(), {
@@ -153,7 +153,11 @@ export const WebpageImpactUtils = () => {
       await interceptedRequest.continue({headers});
     };
 
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+      args: [
+        `--window-size=${config.viewport.width},${config.viewport.height}`,
+      ].filter((arg): arg is NonNullable<typeof arg> => !!arg),
+    });
 
     try {
       const page = await browser.newPage();
@@ -172,10 +176,9 @@ export const WebpageImpactUtils = () => {
             config.emulateNetworkConditions as keyof typeof PredefinedNetworkConditions
           ],
         );
-      } else {
-        // set viewport to a reasonable size for laptops. I hope that is a sensible default.
-        await page.setViewport({width: 1440, height: 900});
       }
+
+      await page.setViewport(config.viewport);
 
       await page.setRequestInterception(true);
       page.on('request', requestHandler);
@@ -417,6 +420,13 @@ export const WebpageImpactUtils = () => {
       scrollToBottom: z.boolean().optional(),
       screenshot: z.boolean().optional(),
       userAgent: z.string().optional(),
+      viewport: z
+        .object({
+          width: z.number(),
+          height: z.number(),
+        })
+        .optional()
+        .default({width: 1440, height: 900}),
       headers: z
         .object({
           accept: z.string().optional(),
