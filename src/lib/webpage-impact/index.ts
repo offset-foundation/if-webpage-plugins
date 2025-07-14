@@ -156,6 +156,7 @@ export const WebpageImpactUtils = () => {
     const browser = await puppeteer.launch({
       args: [
         `--window-size=${config.viewport.width},${config.viewport.height}`,
+        config.proxy ? `--proxy-server=${config.proxy.server}` : null,
       ].filter((arg): arg is NonNullable<typeof arg> => !!arg),
     });
 
@@ -176,6 +177,12 @@ export const WebpageImpactUtils = () => {
             config.emulateNetworkConditions as keyof typeof PredefinedNetworkConditions
           ],
         );
+      }
+      if (config.proxy && config.proxy.username && config.proxy.password) {
+        await page.authenticate({
+          username: config.proxy.username,
+          password: config.proxy.password,
+        });
       }
 
       await page.setViewport(config.viewport);
@@ -427,6 +434,13 @@ export const WebpageImpactUtils = () => {
         })
         .optional()
         .default({width: 1440, height: 900}),
+      proxy: z
+        .object({
+          server: z.string(),
+          username: z.string().optional(),
+          password: z.string().optional(),
+        })
+        .optional(),
       headers: z
         .object({
           accept: z.string().optional(),
