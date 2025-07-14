@@ -83,7 +83,7 @@ const Co2jsUtils = () => {
         },
       );
 
-    return validate<z.infer<typeof schema>>(schema, config);
+    return validate(schema, config);
   };
 
   /**
@@ -140,7 +140,7 @@ const Co2jsUtils = () => {
         },
       );
 
-    return validate<z.infer<typeof inputSchema>>(inputSchema, input);
+    return validate(inputSchema, input);
   };
 
   /**

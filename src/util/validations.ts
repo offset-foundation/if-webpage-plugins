@@ -3,7 +3,7 @@
 
 // originally from: https://github.com/Green-Software-Foundation/if-unofficial-plugins
 
-import {ZodIssue, ZodIssueCode, ZodSchema} from 'zod';
+import {z, ZodIssue, ZodIssueCode, ZodSchema} from 'zod';
 
 import {ERRORS} from '@grnsft/if-core/utils';
 
@@ -60,7 +60,10 @@ const flattenPath = (path: (string | number)[]): string => {
 /**
  * Validates given `object` with given `schema`.
  */
-export const validate = <T>(schema: ZodSchema<T>, object: any) => {
+export const validate = <T extends ZodSchema>(
+  schema: T,
+  object: any,
+): z.output<T> => {
   const validationResult = schema.safeParse(object);
 
   if (!validationResult.success) {

@@ -461,7 +461,7 @@ export const WebpageImpactUtils = () => {
         },
       );
 
-    return validate<z.infer<typeof configSchema>>(configSchema, config);
+    return validate(configSchema, config);
   };
 
   return {

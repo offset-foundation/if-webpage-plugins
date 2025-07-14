@@ -43,7 +43,7 @@ export const GreenHosting = PluginFactory({
       })
       .refine(allDefined, {message: '`url` must be provided.'});
 
-    return validate<z.infer<typeof schema>>(schema, input);
+    return validate(schema, input);
   },
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   implementation: async (inputs: PluginParams[], _config: ConfigParams) => {

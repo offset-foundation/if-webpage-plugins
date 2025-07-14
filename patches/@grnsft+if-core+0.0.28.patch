@@ -1,0 +1,33 @@
+diff --git a/node_modules/@grnsft/if-core/interfaces/index.d.ts b/node_modules/@grnsft/if-core/interfaces/index.d.ts
+index e511055..ba0faff 100644
+--- a/node_modules/@grnsft/if-core/interfaces/index.d.ts
++++ b/node_modules/@grnsft/if-core/interfaces/index.d.ts
+@@ -2,7 +2,7 @@ import { ConfigParams, MappingParams, PluginFactoryParams, PluginParametersMetad
+ /**
+  * Creates plugin instance according to given parameters.
+  */
+-export declare const PluginFactory: <C = ConfigParams>(params: PluginFactoryParams<C>) => (config: C | undefined, parametersMetadata: PluginParametersMetadata, mapping: MappingParams) => {
++export declare const PluginFactory: <C = ConfigParams, D = C>(params: PluginFactoryParams<C, D>) => (config: C | undefined, parametersMetadata: PluginParametersMetadata, mapping: MappingParams) => {
+     metadata: {
+         inputs: {
+             [x: string]: {
+diff --git a/node_modules/@grnsft/if-core/types/index.d.ts b/node_modules/@grnsft/if-core/types/index.d.ts
+index b69163c..da2bd87 100644
+--- a/node_modules/@grnsft/if-core/types/index.d.ts
++++ b/node_modules/@grnsft/if-core/types/index.d.ts
+@@ -80,11 +80,11 @@ export type ArithmeticParameters = {
+  * Plugin factory types.
+  */
+ export type InputValidatorFunction = (input: PluginParams, config: ConfigParams, index?: number) => PluginParams;
+-export type ConfigValidatorFunction = (config: ConfigParams, input?: PluginParams) => ConfigParams;
+-export interface PluginFactoryParams<C = ConfigParams> {
++export type ConfigValidatorFunction = <C = ConfigParams, D = C>(config: C, input?: PluginParams) => D;
++export interface PluginFactoryParams<C = ConfigParams, D = C> {
+     metadata?: PluginParametersMetadata;
+-    implementation: (inputs: PluginParams[], config: C, mapping?: MappingParams) => Promise<PluginParams[]>;
+-    configValidation?: z.ZodSchema | ConfigValidatorFunction;
++    implementation: (inputs: PluginParams[], config: D, mapping?: MappingParams) => Promise<PluginParams[]>;
++    configValidation?: z.ZodSchema | ConfigValidatorFunction<C, D>;
+     inputValidation?: z.ZodSchema | InputValidatorFunction;
+     allowArithmeticExpressions?: string[];
+ }

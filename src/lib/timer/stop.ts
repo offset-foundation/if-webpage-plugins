@@ -53,7 +53,7 @@ export const TimerStop = PluginFactory({
         .datetime(),
     });
 
-    return validate<z.infer<typeof schema>>(schema, input);
+    return validate(schema, input);
   },
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   implementation: async (inputs: PluginParams[], _config: ConfigParams) => {

@@ -32,7 +32,7 @@ export const ShellExecCommand = PluginFactory({
       command: z.string(),
     });
 
-    return validate<z.infer<typeof schema>>(schema, config);
+    return validate(schema, config);
   },
   implementation: async (inputs: PluginParams[], config: ConfigParams) => {
     const {command} = config;
