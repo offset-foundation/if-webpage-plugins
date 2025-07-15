@@ -242,10 +242,23 @@ export const WebpageImpactUtils = () => {
         ...computeMetrics(initialResources, reloadedResources),
         finalUrl: page.url(),
         screenshot: config?.screenshot
-          ? await page.screenshot({
-              type: 'webp',
-              encoding: 'binary',
-            })
+          ? await (async () => {
+              // Hide the scrollbar
+              await page.evaluate(() => {
+                const style = document.createElement('style');
+                style.innerHTML = `
+                  ::-webkit-scrollbar { display: none !important; }
+                  html { scrollbar-width: none !important; }
+                  body { -ms-overflow-style: none !important; }
+                `;
+                document.head.appendChild(style);
+              });
+
+              return await page.screenshot({
+                type: 'webp',
+                encoding: 'binary',
+              });
+            })()
           : null,
         timeoutTriggered,
       };
