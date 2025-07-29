@@ -499,7 +499,7 @@ export const WebpageImpactUtils = () => {
             .optional(),
         })
         .optional(),
-      chromeExtensions: z.array(z.string()).min(1).optional(),
+      chromeExtensions: z.array(z.string()).optional(),
     });
 
     const configSchema = z
