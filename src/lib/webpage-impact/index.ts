@@ -11,11 +11,6 @@ import puppeteer, {
 } from 'puppeteer';
 import {z} from 'zod';
 
-// @ts-expect-error
-import AutoConsent from '@duckduckgo/autoconsent/extra';
-import {autoconsent} from '@duckduckgo/autoconsent/rules/rules.json';
-import {consentomatic} from '@duckduckgo/autoconsent/rules/consentomatic.json';
-
 import {STRINGS} from '../../config';
 import {allDefined, validate} from '../../util/validations';
 
@@ -197,60 +192,6 @@ export const WebpageImpactUtils = () => {
 
     try {
       const page = await browser.newPage();
-
-      // Set up message passing between content script and background context
-      await page.evaluateOnNewDocument(
-        rules => {
-          // Define the message passing interface
-          // @ts-expect-error
-          window.autoconsentSendMessage = (message: MessageEvent) => {
-            // In Puppeteer context, we can simply return responses directly
-            if (message.type === 'detectCmp') {
-              return Promise.resolve({type: 'detectCmpResult', detected: true});
-            }
-            if (
-              message.type === 'optOutCompleted' ||
-              message.type === 'optInResult' ||
-              message.type === 'popupFound'
-            ) {
-              return Promise.resolve({type: 'ack'});
-            }
-            return Promise.resolve({type: 'ack'});
-          };
-
-          // Initialize autoconsent when page loads
-          window.addEventListener('DOMContentLoaded', () => {
-            const consent = new AutoConsent(
-              // @ts-expect-error
-              window.autoconsentSendMessage,
-              {
-                enabled: true,
-                autoAction: 'optIn',
-                detectRetries: 20,
-                enablePrehide: true,
-                enableCosmeticRules: true,
-                enableFilterList: true,
-              },
-              rules,
-            );
-
-            // Store the consent instance to be accessible
-            // @ts-expect-error
-            window.autoconsentInstance = consent;
-
-            // Set up message receiver
-            // @ts-expect-error
-            window.autoconsentReceiveMessage = (message: MessageEvent) => {
-              return Promise.resolve(consent.receiveMessageCallback(message));
-            };
-
-            // Start the consent management process
-            consent.start();
-          });
-        },
-        {autoconsent, consentomatic},
-      );
-
       if (config?.userAgent) {
         await page.setUserAgent(config.userAgent);
       }

@@ -10,7 +10,6 @@
     "url": "https://github.com/offset-foundation/if-webpage-plugins/issues"
   },
   "dependencies": {
-    "@duckduckgo/autoconsent": "^14.10.0",
     "@grnsft/if-core": "^0.0.28",
     "@tgwf/co2": "^0.16.5",
     "puppeteer": "^24.0.0",
