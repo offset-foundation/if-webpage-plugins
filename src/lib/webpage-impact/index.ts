@@ -153,6 +153,7 @@ export const WebpageImpactUtils = () => {
       await interceptedRequest.continue({headers});
     };
 
+    const chromeExtensions = config.chromeExtensions ?? [];
     const browser = await puppeteer.launch({
       args: [
         `--window-size=${config.viewport.width},${config.viewport.height}`,
@@ -171,7 +172,12 @@ export const WebpageImpactUtils = () => {
         '--disable-component-update',
         '--disable-default-apps',
         '--disable-domain-reliability',
-        '--disable-extensions',
+        ...(chromeExtensions.length < 1
+          ? ['--disable-extensions']
+          : [
+              `--disable-extensions-except=${chromeExtensions.join(',')}`,
+              `--load-extension=${chromeExtensions.join(',')}`,
+            ]),
         '--disable-features=site-per-process,TranslateUI,BlinkGenPropertyTrees',
         '--disable-hang-monitor',
         '--disable-ipc-flooding-protection',
@@ -493,6 +499,7 @@ export const WebpageImpactUtils = () => {
             .optional(),
         })
         .optional(),
+      chromeExtensions: z.array(z.string()).min(1).optional(),
     });
 
     const configSchema = z
