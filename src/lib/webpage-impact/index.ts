@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Alexander zur Bonsen <alexander.zur.bonsen@tngtech.com>
 // SPDX SPDX-License-Identifier: Apache-2.0
 
-import puppeteer, {
+import {
   HTTPRequest,
   KnownDevices,
   Page,
@@ -10,9 +10,11 @@ import puppeteer, {
   TimeoutError,
 } from 'puppeteer';
 import {z} from 'zod';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 import {STRINGS} from '../../config';
-import {allDefined, validate} from '../../util/validations';
+import {validate} from '../../util/validations';
 
 import {ERRORS} from '@grnsft/if-core/utils';
 import {PluginFactory} from '@grnsft/if-core/interfaces';
@@ -154,6 +156,7 @@ export const WebpageImpactUtils = () => {
     };
 
     const chromeExtensions = config.chromeExtensions ?? [];
+    puppeteer.use(StealthPlugin());
     const browser = await puppeteer.launch({
       args: [
         `--window-size=${config.viewport.width},${config.viewport.height}`,
@@ -507,7 +510,6 @@ export const WebpageImpactUtils = () => {
         url: z.string(),
       })
       .merge(optionalConfigs)
-      .refine(allDefined, {message: '`url` must be provided.'})
       .refine(
         data => {
           return data?.mobileDevice
