@@ -3,6 +3,7 @@
 
 import {
   HTTPRequest,
+  HTTPResponse,
   KnownDevices,
   Page,
   PredefinedNetworkConditions,
@@ -229,12 +230,15 @@ export const WebpageImpactUtils = () => {
       await page.setRequestInterception(true);
       page.on('request', requestHandler);
 
-      const {pageResources: initialResources, timeoutTriggered} =
-        await loadPageResources(page, url, {
-          reload: false,
-          cacheEnabled: false,
-          scrollToBottom: config?.scrollToBottom,
-        });
+      const {
+        pageResources: initialResources,
+        timeoutTriggered,
+        response: pageResponse,
+      } = await loadPageResources(page, url, {
+        reload: false,
+        cacheEnabled: false,
+        scrollToBottom: config?.scrollToBottom,
+      });
 
       let reloadedResources: Resource[] | undefined;
       if (config?.computeReloadRatio) {
@@ -250,6 +254,7 @@ export const WebpageImpactUtils = () => {
       return {
         ...computeMetrics(initialResources, reloadedResources),
         finalUrl: page.url(),
+        pageResponse,
         screenshot: config?.screenshot
           ? await (async () => {
               // Hide the scrollbar
@@ -290,7 +295,11 @@ export const WebpageImpactUtils = () => {
     page: Page,
     url: string,
     {reload, cacheEnabled, scrollToBottom}: WebpageImpactOptions,
-  ): Promise<{pageResources: Resource[]; timeoutTriggered: boolean}> => {
+  ): Promise<{
+    pageResources: Resource[];
+    timeoutTriggered: boolean;
+    response?: HTTPResponse;
+  }> => {
     await page.setCacheEnabled(cacheEnabled);
 
     // The transfer size of a resource is not available from puppeteer's reponse object.
@@ -341,11 +350,12 @@ export const WebpageImpactUtils = () => {
     // depends on what the service worker does.)
 
     let timeoutTriggered = false;
+    let mainResponse: HTTPResponse | null = null;
     try {
       if (!reload) {
-        await page.goto(url, {waitUntil: 'networkidle0'});
+        mainResponse = await page.goto(url, {waitUntil: 'networkidle0'});
       } else {
-        await page.reload({waitUntil: 'networkidle0'});
+        mainResponse = await page.reload({waitUntil: 'networkidle0'});
       }
     } catch (err) {
       if (err instanceof TimeoutError) {
@@ -364,6 +374,7 @@ export const WebpageImpactUtils = () => {
     return {
       pageResources: mergeCdpData(cdpResponses, cdpTransferSizes),
       timeoutTriggered,
+      response: mainResponse ?? undefined,
     };
   };
 
