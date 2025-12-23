@@ -2,17 +2,16 @@
 // SPDX SPDX-License-Identifier: Apache-2.0
 
 import {
-  HTTPRequest,
-  HTTPResponse,
-  KnownDevices,
-  Page,
-  PredefinedNetworkConditions,
-  Protocol,
-  TimeoutError,
-} from 'puppeteer';
+  chromium,
+  devices as KnownDevices,
+  errors as PlaywrightErrors,
+  type Page,
+  type CDPSession,
+  type Response as PlaywrightResponse,
+  Route,
+  BrowserContextOptions,
+} from 'playwright';
 import {z} from 'zod';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 import {STRINGS} from '../../config';
 import {validate} from '../../util/validations';
@@ -33,7 +32,7 @@ type WebpageImpactOptions = {
 type ResourceBase = {
   url: string;
   status: number;
-  type: Protocol.Network.ResourceType;
+  type: string;
   contentLengthHeader?: number;
 };
 
@@ -140,8 +139,9 @@ export const WebpageImpactUtils = () => {
     url: string,
     config: ReturnType<typeof validateConfig>,
   ) => {
-    const requestHandler = async (interceptedRequest: HTTPRequest) => {
-      const headers = Object.assign({}, interceptedRequest.headers(), {
+    const requestHandler = async (route: Route) => {
+      const req = route.request();
+      const headers = Object.assign({}, req.headers(), {
         ...(config?.headers?.accept && {
           accept: `${config.headers.accept}`,
         }),
@@ -153,15 +153,13 @@ export const WebpageImpactUtils = () => {
           }`,
         }),
       });
-      await interceptedRequest.continue({headers});
+      await route.continue({headers});
     };
 
     const chromeExtensions = config.chromeExtensions ?? [];
-    puppeteer.use(StealthPlugin());
-    const browser = await puppeteer.launch({
+    const browser = await chromium.launch({
       args: [
         `--window-size=${config.viewport.width},${config.viewport.height}`,
-        config.proxy ? `--proxy-server=${config.proxy.server}` : null,
         '--disable-gpu',
         '--disable-dev-shm-usage',
         '--disable-setuid-sandbox',
@@ -201,34 +199,36 @@ export const WebpageImpactUtils = () => {
     });
 
     try {
-      const page = await browser.newPage();
-      if (config?.userAgent) {
-        await page.setUserAgent(config.userAgent);
+      // Build context options (device emulation, viewport, userAgent, proxy)
+      const contextOptions: BrowserContextOptions = {
+        viewport: config.viewport,
+      };
+      if (config?.userAgent) contextOptions.userAgent = config.userAgent;
+      if (config?.mobileDevice) {
+        Object.assign(
+          contextOptions,
+          KnownDevices[config.mobileDevice as Device],
+        );
       }
+      if (config?.proxy) {
+        contextOptions.proxy = {
+          server: config.proxy.server,
+          username: config.proxy.username,
+          password: config.proxy.password,
+        };
+      }
+
+      const context = await browser.newContext(contextOptions);
+      const page = await context.newPage();
+
       if (config?.timeout && config?.timeout >= 0) {
         page.setDefaultNavigationTimeout(config.timeout);
       }
-      if (config?.mobileDevice) {
-        await page.emulate(KnownDevices[config.mobileDevice as Device]);
-      }
-      if (config?.emulateNetworkConditions) {
-        await page.emulateNetworkConditions(
-          PredefinedNetworkConditions[
-            config.emulateNetworkConditions as keyof typeof PredefinedNetworkConditions
-          ],
-        );
-      }
-      if (config.proxy && config.proxy.username && config.proxy.password) {
-        await page.authenticate({
-          username: config.proxy.username,
-          password: config.proxy.password,
-        });
-      }
 
-      await page.setViewport(config.viewport);
+      // Setup request interception via routing
+      await page.route('**/*', requestHandler);
 
-      await page.setRequestInterception(true);
-      page.on('request', requestHandler);
+      // Use CDP session to collect response and transfer sizes and to control cache
 
       const {
         pageResources: initialResources,
@@ -268,10 +268,7 @@ export const WebpageImpactUtils = () => {
                 document.head.appendChild(style);
               });
 
-              return await page.screenshot({
-                type: 'webp',
-                encoding: 'binary',
-              });
+              return await page.screenshot({type: 'png'});
             })()
           : null,
         timeoutTriggered,
@@ -282,11 +279,15 @@ export const WebpageImpactUtils = () => {
   };
 
   const createDisposableCDPSession = async (page: Page) => {
-    const cdpSession = await page.createCDPSession();
+    const cdpSession: CDPSession = await page.context().newCDPSession(page);
     return {
       cdpSession,
       [Symbol.asyncDispose]: async () => {
-        await cdpSession.detach();
+        try {
+          await cdpSession.detach();
+        } catch (_) {
+          // ignore
+        }
       },
     };
   };
@@ -298,84 +299,100 @@ export const WebpageImpactUtils = () => {
   ): Promise<{
     pageResources: Resource[];
     timeoutTriggered: boolean;
-    response?: HTTPResponse;
+    response?: PlaywrightResponse;
   }> => {
-    await page.setCacheEnabled(cacheEnabled);
+    // We'll control cache via CDP (Network.setCacheDisabled)
 
     // The transfer size of a resource is not available from puppeteer's reponse object.
     // Need to take the detour via a Chrome devtools protcol session to get it.
     // https://chromedevtools.github.io/devtools-protocol/tot/Network/
     const cdpResponses: Record<string, ResourceBase> = {};
     const cdpTransferSizes: Record<string, {transferSize: number}> = {};
-    await using disposableCDPSession = await createDisposableCDPSession(page);
-    const {cdpSession} = disposableCDPSession;
-    await cdpSession.send('Network.enable');
-    cdpSession.on('Network.responseReceived', event => {
-      const contentLength = parseInt(event.response.headers['Content-Length']);
-      cdpResponses[event.requestId] = {
-        url: event.response.url,
-        status: event.response.status,
-        type: event.type,
-        contentLengthHeader: !isNaN(contentLength) ? contentLength : undefined,
-      };
-    });
-    // Transfer size
-    // 1) Response served from web
-    // Network.responseReceived event only contains the number of bytes received for
-    // the request so far / when the initial response is received.
-    // The final number can is sent with Network.loadingFinished.
-    //
-    // 2) Response served from cache
-    // If the resource is served from cache, Network.responseReceived contains the
-    // size of the cached response, while Network.loadingFinished reports size of 0.
-    cdpSession.on('Network.loadingFinished', event => {
-      cdpTransferSizes[event.requestId] = {
-        transferSize: event.encodedDataLength,
-      };
-    });
-
-    // TODO: Currently, the amount of cached resources is determined by
-    // relying on `encodedDataLength` of the `Network.loadingFinished` event.
-    // It is 0 if the response was served from cache, which corresponds to
-    // `Network.requestServedFromCache` being true.
-    // Potentially this can be improved to excluded prefetched responses.
-    //
-    // Furter Notes:
-    // I haven't found good documentation about this event yet, but I assume it also includes prefetch cache
-    // which I would want to exclude ideally, because it does not reuse data.
-    // Network.responseReceived event contains two values,
-    // fromDiskCache and fromPrefetchCache, that allow to derive
-    // if an item was served from cache. But that misses memory cache.
-    // (There is also fromServiceWorker, but I don't think that allows a conclusion about caching,
-    // depends on what the service worker does.)
-
-    let timeoutTriggered = false;
-    let mainResponse: HTTPResponse | null = null;
+    const disposable = await createDisposableCDPSession(page);
+    const {cdpSession} = disposable;
     try {
-      if (!reload) {
-        mainResponse = await page.goto(url, {waitUntil: 'networkidle0'});
-      } else {
-        mainResponse = await page.reload({waitUntil: 'networkidle0'});
+      await cdpSession.send('Network.enable');
+      // disable cache if needed (cacheEnabled=false -> disable cache)
+      await cdpSession.send('Network.setCacheDisabled', {
+        cacheDisabled: !cacheEnabled,
+      });
+      cdpSession.on('Network.responseReceived', event => {
+        const contentLength = parseInt(
+          event.response.headers['Content-Length'],
+        );
+        cdpResponses[event.requestId] = {
+          url: event.response.url,
+          status: event.response.status,
+          type: event.type,
+          contentLengthHeader: !isNaN(contentLength)
+            ? contentLength
+            : undefined,
+        };
+      });
+      // Transfer size
+      // 1) Response served from web
+      // Network.responseReceived event only contains the number of bytes received for
+      // the request so far / when the initial response is received.
+      // The final number can is sent with Network.loadingFinished.
+      //
+      // 2) Response served from cache
+      // If the resource is served from cache, Network.responseReceived contains the
+      // size of the cached response, while Network.loadingFinished reports size of 0.
+      cdpSession.on('Network.loadingFinished', event => {
+        cdpTransferSizes[event.requestId] = {
+          transferSize: event.encodedDataLength,
+        };
+      });
+
+      // TODO: Currently, the amount of cached resources is determined by
+      // relying on `encodedDataLength` of the `Network.loadingFinished` event.
+      // It is 0 if the response was served from cache, which corresponds to
+      // `Network.requestServedFromCache` being true.
+      // Potentially this can be improved to excluded prefetched responses.
+      //
+      // Furter Notes:
+      // I haven't found good documentation about this event yet, but I assume it also includes prefetch cache
+      // which I would want to exclude ideally, because it does not reuse data.
+      // Network.responseReceived event contains two values,
+      // fromDiskCache and fromPrefetchCache, that allow to derive
+      // if an item was served from cache. But that misses memory cache.
+      // (There is also fromServiceWorker, but I don't think that allows a conclusion about caching,
+      // depends on what the service worker does.)
+
+      let timeoutTriggered = false;
+      let mainResponse: PlaywrightResponse | null = null;
+      try {
+        if (!reload) {
+          mainResponse = await page.goto(url, {waitUntil: 'networkidle'});
+        } else {
+          mainResponse = await page.reload({waitUntil: 'networkidle'});
+        }
+      } catch (err) {
+        if (err instanceof PlaywrightErrors.TimeoutError) {
+          timeoutTriggered = true;
+        } else {
+          throw err;
+        }
       }
-    } catch (err) {
-      if (err instanceof TimeoutError) {
-        timeoutTriggered = true;
-      } else {
-        throw err;
+
+      if (scrollToBottom) {
+        // await page.screenshot({path: './TOP.png'});
+        await page.evaluate(scrollToBottomOfPage);
+        // await page.screenshot({path: './BOTTOM.png'});
+      }
+
+      return {
+        pageResources: mergeCdpData(cdpResponses, cdpTransferSizes),
+        timeoutTriggered,
+        response: mainResponse ?? undefined,
+      };
+    } finally {
+      try {
+        await cdpSession.detach();
+      } catch (_) {
+        // do nothing
       }
     }
-
-    if (scrollToBottom) {
-      // await page.screenshot({path: './TOP.png'});
-      await page.evaluate(scrollToBottomOfPage);
-      // await page.screenshot({path: './BOTTOM.png'});
-    }
-
-    return {
-      pageResources: mergeCdpData(cdpResponses, cdpTransferSizes),
-      timeoutTriggered,
-      response: mainResponse ?? undefined,
-    };
   };
 
   const mergeCdpData = (
@@ -435,7 +452,7 @@ export const WebpageImpactUtils = () => {
         }
         return acc;
       },
-      {} as Record<Protocol.Network.ResourceType, number>,
+      {} as Record<string, number>,
     );
     const initialPageWeight = Object.values(resourceTypeWeights).reduce(
       (acc, resourceTypeSize) => acc + resourceTypeSize,
@@ -532,22 +549,7 @@ export const WebpageImpactUtils = () => {
             KnownDevices,
           ).join(', ')}.`,
         },
-      )
-      .refine(
-        data => {
-          return data?.emulateNetworkConditions
-            ? !!PredefinedNetworkConditions[
-                data.emulateNetworkConditions as keyof typeof PredefinedNetworkConditions
-              ]
-            : true;
-        },
-        {
-          message: `Network condition must be one of: ${Object.keys(
-            PredefinedNetworkConditions,
-          ).join(', ')}.`,
-        },
       );
-
     return validate(configSchema, config);
   };
 
