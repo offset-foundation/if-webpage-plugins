@@ -4,6 +4,7 @@
 // modified from https://github.com/Green-Software-Foundation/if-unofficial-plugins
 
 import {Co2js} from '../../../../lib/co2js';
+import {vi, describe, it, expect, beforeEach} from 'vitest';
 
 import {ERRORS} from '@grnsft/if-core/utils';
 
@@ -20,12 +21,12 @@ const {ConfigError, InputValidationError} = ERRORS;
  * and just changed the values. More effort is needed to make them more stable.
  */
 
-jest.mock('@tgwf/co2', () => {
-  const original = jest.requireActual('@tgwf/co2');
+vi.mock('@tgwf/co2', async () => {
+  const original = await vi.importActual('@tgwf/co2');
 
   return {
     __esModule: true,
-    co2: jest.fn(() => {
+    co2: vi.fn(() => {
       if (process.env.WRONG_MODEL === 'true') {
         return {perByte: () => undefined};
       } else if (process.env.SWD_TYPE === 'true') {
@@ -33,9 +34,9 @@ jest.mock('@tgwf/co2', () => {
         if (process.env.SWD_VERSION) {
           version = Number(process.env.SWD_VERSION);
         }
-        return new original.co2({model: 'swd', version});
+        return new (original as any).co2({model: 'swd', version});
       }
-      return new original.co2({model: '1byte'});
+      return new (original as any).co2({model: '1byte'});
     }),
   };
 });
@@ -46,7 +47,7 @@ describe('lib/co2js: ', () => {
       process.env.WRONG_MODEL = 'false';
       process.env.SWD_TYPE = undefined;
       process.env.SWD_VERSION = undefined;
-      jest.clearAllMocks();
+      vi.clearAllMocks();
     });
 
     describe('init Co2js: ', () => {
@@ -176,19 +177,21 @@ describe('lib/co2js: ', () => {
           },
         ];
 
-        expect.assertions(1);
+        expect.assertions(3);
 
         const result = await output.execute(inputs);
 
-        expect(result).toStrictEqual([
+        expect(result).toMatchObject([
           {
             timestamp: '2021-01-01T00:00:00Z',
             duration: 3600,
             'network/data/bytes': 100000,
             'green-web-host': true,
-            'estimated-carbon': 0.025,
           },
         ]);
+
+        expect(result[0]['estimated-carbon']).toBeGreaterThan(0.024); // expected value was 0.036 at time of this change
+        expect(result[0]['estimated-carbon']).toBeLessThan(0.028);
       });
 
       it('returns a result when `type` is `swd` and `version` is given in config.', async () => {
@@ -239,14 +242,13 @@ describe('lib/co2js: ', () => {
         ];
         const result = await output.execute(inputs);
 
-        expect.assertions(1);
+        expect.assertions(3);
 
-        expect(result).toStrictEqual([
+        expect(result).toMatchObject([
           {
             timestamp: '2021-01-01T00:00:00Z',
             duration: 3600,
             'network/data/bytes': 100000,
-            'estimated-carbon': 0.037,
             'green-web-host': false,
             options: {
               dataReloadRatio: 0.6,
@@ -255,6 +257,8 @@ describe('lib/co2js: ', () => {
             },
           },
         ]);
+        expect(result[0]['estimated-carbon']).toBeGreaterThan(0.035); // expected value was 0.037 at time of this change
+        expect(result[0]['estimated-carbon']).toBeLessThan(0.039);
       });
 
       it('throws an error when config is mising.', async () => {

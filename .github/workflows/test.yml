@@ -18,13 +18,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
       - uses: actions/setup-node@v4
         with:
-          cache: 'npm'
-          node-version: 22
+          cache: 'pnpm'
+          node-version: 24.14.0
 
       - name: Install dependencies
-        run: npm install
+        run: pnpm install
+
+      - name: Run type checking
+        run: pnpm run typecheck
 
       - name: Run unit tests
-        run: npm test
+        run: pnpm run test:ci
+
+      - name: Build project
+        run: pnpm run build

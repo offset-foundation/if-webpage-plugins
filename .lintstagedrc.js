@@ -1,7 +1,8 @@
 module.exports = {
   '*.ts': [
-    'gts lint',
-    'jest --verbose --findRelatedTests --passWithNoTests',
+    'pnpm run lint',
+    'pnpm run test:ci',
   ],
-  'package.json': 'fixpack',
+  '{src/**/*.ts,vitest.config.ts}': () => 'pnpm run typecheck', // use function syntax to avoid file paths being passed to tsc. There were occasions when that broke the command.
+  'package.json': 'pnpm run fix:package',
 }

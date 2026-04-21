@@ -406,9 +406,13 @@ export const WebpageImpactUtils = () => {
   };
 
   const scrollToBottomOfPage = async () => {
-    await new Promise<void>(resolve => {
+    await new Promise<void>((resolve, reject) => {
+      const SCROLL_DISTANCE = 100;
+      const SCROLL_INTERVAL_MS = 100;
+      const SCROLL_TIMEOUT_MS = 30000;
+
       let totalHeight = 0;
-      const distance = 100;
+      const distance = SCROLL_DISTANCE;
       const timer = setInterval(() => {
         const scrollHeight = document.body.scrollHeight;
         window.scrollBy(0, distance);
@@ -418,7 +422,16 @@ export const WebpageImpactUtils = () => {
           clearInterval(timer);
           resolve();
         }
-      }, 100);
+      }, SCROLL_INTERVAL_MS);
+
+      setTimeout(() => {
+        clearInterval(timer);
+        reject(
+          new TimeoutError(
+            `${LOGGER_PREFIX}: Scrolling to bottom of page timed out after ${SCROLL_TIMEOUT_MS / 1000} seconds.`,
+          ),
+        );
+      }, SCROLL_TIMEOUT_MS);
     });
   };
 
