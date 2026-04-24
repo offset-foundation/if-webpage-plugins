@@ -257,6 +257,11 @@ export const WebpageImpactUtils = () => {
         pageResponse,
         screenshot: config?.screenshot
           ? await (async () => {
+              // Reset scroll to the top to capture the initial viewport.
+              await page.evaluate(() => {
+                window.scrollTo({top: 0, left: 0, behavior: 'instant'});
+              });
+
               // Hide the scrollbar
               await page.evaluate(() => {
                 const style = document.createElement('style');
