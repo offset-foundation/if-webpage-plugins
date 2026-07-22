@@ -358,9 +358,9 @@ export const WebpageImpactUtils = () => {
     let mainResponse: HTTPResponse | null = null;
     try {
       if (!reload) {
-        mainResponse = await page.goto(url, {waitUntil: 'networkidle0'});
+        mainResponse = await page.goto(url, {waitUntil: 'networkidle2'});
       } else {
-        mainResponse = await page.reload({waitUntil: 'networkidle0'});
+        mainResponse = await page.reload({waitUntil: 'networkidle2'});
       }
     } catch (err) {
       if (err instanceof TimeoutError) {
