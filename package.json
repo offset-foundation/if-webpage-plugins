@@ -12,7 +12,7 @@
   "dependencies": {
     "@grnsft/if-core": "^0.0.28",
     "@tgwf/co2": "^0.16.5",
-    "puppeteer": "^24.0.0",
+    "puppeteer": "^25.0.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "tldjs": "^2.3.1",
@@ -58,6 +58,13 @@
   ],
   "license": "Apache-2.0",
   "main": "./build/index.js",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "puppeteer",
+      "tldjs"
+    ]
+  },
   "publishConfig": {
     "access": "public"
   },
