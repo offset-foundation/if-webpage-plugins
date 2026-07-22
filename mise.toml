@@ -9,7 +9,7 @@ experimental = true
 run = "pnpm exec puppeteer browsers install chrome"
 
 [tasks.publish-github]
-run = "pnpm publish --registry https://npm.pkg.github.com/ --tag latest --publish-branch main"
+run = "pnpm publish --registry https://npm.pkg.github.com/ --tag latest --publish-branch offset"
 
 [hooks]
 postinstall = { task = "puppeteer-install-chrome" }
