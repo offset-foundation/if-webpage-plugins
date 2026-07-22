@@ -28,6 +28,7 @@ type WebpageImpactOptions = {
   reload: boolean;
   cacheEnabled: boolean;
   scrollToBottom?: boolean;
+  scrollTimeout: number;
 };
 
 type ResourceBase = {
@@ -238,6 +239,7 @@ export const WebpageImpactUtils = () => {
         reload: false,
         cacheEnabled: false,
         scrollToBottom: config?.scrollToBottom,
+        scrollTimeout: config.scrollTimeout,
       });
 
       let reloadedResources: Resource[] | undefined;
@@ -247,6 +249,7 @@ export const WebpageImpactUtils = () => {
             reload: true,
             cacheEnabled: true,
             scrollToBottom: config?.scrollToBottom,
+            scrollTimeout: config.scrollTimeout,
           })
         ).pageResources;
       }
@@ -299,7 +302,7 @@ export const WebpageImpactUtils = () => {
   const loadPageResources = async (
     page: Page,
     url: string,
-    {reload, cacheEnabled, scrollToBottom}: WebpageImpactOptions,
+    {reload, cacheEnabled, scrollToBottom, scrollTimeout}: WebpageImpactOptions,
   ): Promise<{
     pageResources: Resource[];
     timeoutTriggered: boolean;
@@ -372,7 +375,7 @@ export const WebpageImpactUtils = () => {
 
     if (scrollToBottom) {
       // await page.screenshot({path: './TOP.png'});
-      await page.evaluate(scrollToBottomOfPage);
+      await page.evaluate(scrollToBottomOfPage, scrollTimeout);
       // await page.screenshot({path: './BOTTOM.png'});
     }
 
@@ -410,11 +413,11 @@ export const WebpageImpactUtils = () => {
     return pageResources;
   };
 
-  const scrollToBottomOfPage = async () => {
+  const scrollToBottomOfPage = async (scrollTimeoutMs: number) => {
     await new Promise<void>((resolve, reject) => {
       const SCROLL_DISTANCE = 100;
       const SCROLL_INTERVAL_MS = 100;
-      const SCROLL_TIMEOUT_MS = 30000;
+      const SCROLL_TIMEOUT_MS = scrollTimeoutMs;
 
       let totalHeight = 0;
       const distance = SCROLL_DISTANCE;
@@ -506,6 +509,7 @@ export const WebpageImpactUtils = () => {
       mobileDevice: z.string().optional(),
       emulateNetworkConditions: z.string().optional(),
       scrollToBottom: z.boolean().optional(),
+      scrollTimeout: z.number().gte(0).default(30000),
       screenshot: z.boolean().optional(),
       userAgent: z.string().optional(),
       viewport: z
